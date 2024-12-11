@@ -118,6 +118,7 @@ def connect_from_client(client_socket, address):
         send_chunk(client_socket, filename, start, end)
     client_socket.close()
 
+
 # Vòng lặp chính của server
 while True:
     client_socket, address = server_socket.accept()

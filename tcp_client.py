@@ -96,7 +96,7 @@ def receive_chunk(client_socket, filename, start_end):
 # Hàm tải file về Client 
 def receive_file(client_socket, filename, filesize):
     print(f"Receiving {filename}...")
-    unit = filesize // (BUFFER_SIZE * 4) * BUFFER_SIZE
+    unit = int(filesize/4)
     length_of_chunk = [
         (0, unit),
         (unit, 2 * unit),
@@ -127,22 +127,6 @@ def send_download_file_list(client_socket, wanted_files):
     # Gửi danh sách file
     client_socket.sendall(wanted_files.encode())
 
-def handle_exit(signal_received, frame):
-    """Hàm xử lý khi người dùng nhấn Ctrl + C."""
-    print("\n[!] Ctrl + C được nhấn. Đang đóng kết nối...")
-    client_socket.send(f"{len("close")}".encode())
-    client_socket.send("close".encode())
-    if client_socket:
-        try:
-            client_socket.close()  # Đóng socket nếu đang kết nối
-            print("[+] Kết nối đã được đóng.")
-        except Exception as e:
-            print(f"[!] Lỗi khi đóng socket: {e}")
-    sys.exit(0)  # Thoát chương trình
-
-
-# Gắn xử lý tín hiệu Ctrl + C
-signal.signal(signal.SIGINT, handle_exit)
 
 def get_filename_filesize(file):
     filename = ""
@@ -198,7 +182,23 @@ def connect_to_server():
                     print(f"[!] File {file} đã được tải")
                 checked_file.append(file)
         time.sleep(5)
-                
+
+def handle_exit(signal_received, frame):
+    """Hàm xử lý khi người dùng nhấn Ctrl + C."""
+    print("\n[!] Ctrl + C được nhấn. Đang đóng kết nối...")
+    client_socket.send(f"{len("close")}".encode())
+    client_socket.send("close".encode())
+    if client_socket:
+        try:
+            client_socket.close()  # Đóng socket nếu đang kết nối
+            print("[+] Kết nối đã được đóng.")
+        except Exception as e:
+            print(f"[!] Lỗi khi đóng socket: {e}")
+    sys.exit(0)  # Thoát chương trình
+
+
+# Gắn xử lý tín hiệu Ctrl + C
+signal.signal(signal.SIGINT, handle_exit)               
 
 # Bắt đầu kết nối và tải file
 if __name__ == "__main__":

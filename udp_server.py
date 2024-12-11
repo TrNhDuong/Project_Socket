@@ -1,6 +1,7 @@
 import socket
 import os
 import json
+import threading
 
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 5001
@@ -56,13 +57,6 @@ def send_file_list(server_socket, address):
             packet = f"{idx}:{part}".encode()  # Thêm chỉ số gói tin
             server_socket.sendto(packet, address)
 
-def add_padding_to_length(length_str, total_length=20):
-    """Thêm padding vào chuỗi chiều dài cho đủ tổng chiều dài `total_length`."""
-    # Nếu chiều dài của chuỗi nhỏ hơn total_length, thêm padding
-    if len(length_str) < total_length:
-        padding_length = total_length - len(length_str)
-        length_str = length_str + '#' * padding_length  # Thêm byte padding
-    return length_str
 
 def receive_namefile_filesize():
     data, addr = server_socket.recvfrom(100)
@@ -72,28 +66,18 @@ def receive_namefile_filesize():
     while data[i] != '#':
         filename += data[i]
         i += 1
-    i += 2
-    filesize = ""
-    while data[i] != '#':
-        filesize += data[i]
+
+    return filename
+
+
+def send_chunk_udp(address, parts, start, end):
+    i = start
+    while i < end:
+        header = f"{i}:".encode()
+        server_socket.sendto(header + parts[i], address)
         i += 1
 
-    return filename, int(filesize)
-
-def send_file(filename, filesize, addr):
-    i = 0
-    with open(FILE_DIRECTORY + "\\" + filename, "rb") as file_obj:
-        total_sent = 0
-        size = filesize
-        while total_sent < size:
-            byte_read = file_obj.read(BUFFER_SIZE)
-            header = add_padding_to_length(str(i))
-            server_socket.sendto(header.encode(), addr)
-            server_socket.sendto(byte_read, addr)
-            total_sent += BUFFER_SIZE
-            i += 1
-    
-def send_file_udp(filename, filesize, address):  
+def send_file_udp(filename, address):  
     try:
         with open(FILE_DIRECTORY + filename, "rb") as file:
             file_data = file.read()
@@ -103,13 +87,20 @@ def send_file_udp(filename, filesize, address):
         parts = [file_data[i:i + BUFFER_SIZE] for i in range(0, total_size, BUFFER_SIZE)]
         total_parts = len(parts)
         
-        # Gửi thông báo số lượng gói tin
-        server_socket.sendto(f"FILE:{total_parts}".encode(), address)
+        unit = int(total_parts/4)
+        length_of_chunk = [(0,unit), (unit, 2*unit), (2*unit, 3*unit), (3*unit, total_parts)]
 
-        # Gửi từng phần dữ liệu với số thứ tự
-        for idx, part in enumerate(parts):
-            header = f"{idx}:".encode()  # Header chứa số thứ tự
-            server_socket.sendto(header + part, address)
+        threads = []
+        for i in range(4):
+            start, end = length_of_chunk[i]
+            thread = threading.Thread(target=send_chunk_udp, args=(address, parts, start, end))
+            threads.append(thread)
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
     except FileNotFoundError:
         print(f"File not found: {filename}")
 
@@ -118,9 +109,9 @@ file_list = get_file_list()
 def handle_client(addr):
     send_file_list(server_socket, addr)
     while True:
-        filename, filesize = receive_namefile_filesize()
+        filename = receive_namefile_filesize()
         print(filename)
-        send_file_udp(filename, filesize, addr)
+        send_file_udp(filename, addr)
         # data, addr = server_socket.recvfrom(1024)
         # print(f"Received '{data.decode()}' from {addr}")
         # server_socket.sendto(b"Hello, Client!", addr)
@@ -128,7 +119,7 @@ def handle_client(addr):
 if __name__ == "__main__":
     data, addr = server_socket.recvfrom(1)
     if data.decode() == "0":
-        print(f"[+] Connection form {addr}")
+        print(f"[+] Message form {addr}")
         handle_client(addr)
 
 
