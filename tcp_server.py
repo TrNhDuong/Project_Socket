@@ -15,7 +15,7 @@ connected_addr = []
 file_list = []
 
 # Tạo socket server
-server_socket = socket.socket()
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_socket.bind((SERVER_HOST, SERVER_PORT))
 server_socket.listen(5)
 print(f"[*] Đang lắng nghe tại {SERVER_HOST}:{SERVER_PORT}")
@@ -32,17 +32,15 @@ def get_file_list():
                 file_list.append(f"{filename} - {filesize} byte")
     return file_list
 
-# Hàm gửi danh sách các file muốn tải
 def send_file_list(client_socket):
-    """Gửi danh sách file dưới dạng JSON cho client."""
     # Lấy danh sách file
     file_list = get_file_list()
-    # Chuyển mảng thành chuỗi JSON
-    json_data = json.dumps(file_list)
-    # Gửi độ dài của chuỗi JSON trước
-    client_socket.send(f"{len(json_data)}".encode())
-    # Gửi toàn bộ chuỗi JSON
-    client_socket.sendall(json_data.encode())
+    # Chuyển danh sách file thành chuỗi, các file cách nhau bằng dấu phẩy
+    file_list_str = ','.join(file_list)
+    # Gửi độ dài chuỗi trước
+    client_socket.send(f"{len(file_list_str)}".encode())
+    # Gửi danh sách file
+    client_socket.sendall(file_list_str.encode())
 
 # Hàm nhận tin nhắn từ Server
 def receive_message(client_socket):

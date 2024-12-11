@@ -17,13 +17,13 @@ DOWNLOADED_FILE = "downloaded_files.txt"
 client_socket = socket.socket()
 
 def receive_file_list(client_socket):
-    """Nhận danh sách file từ server."""
-    # Nhận độ dài chuỗi JSON
-    json_length = int(client_socket.recv(1024).decode())
-    # Nhận chuỗi JSON
-    json_data = client_socket.recv(json_length).decode()
-    # Chuyển chuỗi JSON thành danh sách
-    file_list = json.loads(json_data)
+    # Nhận độ dài danh sách file
+    length_data = client_socket.recv(1024).decode()
+    file_list_length = int(length_data)
+    # Nhận danh sách file dạng chuỗi
+    received_data = client_socket.recv(file_list_length).decode()
+    # Phân tách chuỗi thành danh sách file (giả định phân tách bằng dấu phẩy)
+    file_list = received_data.split(',') if received_data else []
     return file_list
 
 def get_files_to_download():
@@ -192,8 +192,10 @@ def connect_to_server():
                     i = filename_list.index(file)
                     size = filesize_list[i]
                     receive_file(client_socket, file, size)
-                else:
+                elif file not in filename_list:
                     print(f"[!] File {file} không tồn tại")
+                elif file in downloaded_file:
+                    print(f"[!] File {file} đã được tải")
                 checked_file.append(file)
         time.sleep(5)
                 
