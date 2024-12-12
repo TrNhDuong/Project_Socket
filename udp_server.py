@@ -32,21 +32,20 @@ def convert_to(file_list):
     return mess
 
 def send_file_list(server_socket, address):
-    """Gửi danh sách file dưới dạng JSON qua UDP."""
     # Lấy danh sách file
     file_list = get_file_list()
     # Chuyển mảng thành chuỗi JSON
-    json_data = json.dumps(file_list)
+    file_list_data = ','.join(file_list)
     # Kiểm tra kích thước dữ liệu
     max_packet_size = 1024  # Giới hạn kích thước gói tin
-    data_length = len(json_data)
+    data_length = len(file_list_data)
     
     if data_length <= max_packet_size:
         # Gửi một gói tin nếu dữ liệu nhỏ
-        server_socket.sendto(json_data.encode(), address)
+        server_socket.sendto(file_list_data.encode(), address)
     else:
         # Chia dữ liệu thành nhiều phần
-        parts = [json_data[i:i+max_packet_size] for i in range(0, data_length, max_packet_size)]
+        parts = [file_list_data[i:i+max_packet_size] for i in range(0, data_length, max_packet_size)]
         total_parts = len(parts)
 
         # Gửi số lượng gói tin trước
@@ -61,12 +60,7 @@ def send_file_list(server_socket, address):
 def receive_namefile_filesize():
     data, addr = server_socket.recvfrom(100)
     data = data.decode()
-    filename = ""
-    i = 0
-    while data[i] != '#':
-        filename += data[i]
-        i += 1
-
+    filename, support = data.split(',')
     return filename
 
 
@@ -112,9 +106,7 @@ def handle_client(addr):
         filename = receive_namefile_filesize()
         print(filename)
         send_file_udp(filename, addr)
-        # data, addr = server_socket.recvfrom(1024)
-        # print(f"Received '{data.decode()}' from {addr}")
-        # server_socket.sendto(b"Hello, Client!", addr)
+
 
 if __name__ == "__main__":
     data, addr = server_socket.recvfrom(1)

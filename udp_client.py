@@ -19,7 +19,7 @@ def receive_file_list(client_socket):
     # Nhận thông báo về số lượng gói tin
     data, server = client_socket.recvfrom(1024)
     message = data.decode()
-
+    print(message)
     if message.startswith("PARTS:"):
         total_parts = int(message.split(":")[1])
         received_data = [""] * total_parts
@@ -31,11 +31,12 @@ def receive_file_list(client_socket):
 
         # Ghép dữ liệu
         full_data = "".join(received_data)
-        file_list = json.loads(full_data)
+        print(full_data)
+        file_list = full_data.split(',')
         return file_list
     else:
         # Nhận một gói tin đơn giản
-        return json.loads(message)
+        return message.split(',')
 
 def get_files_to_download():
     try:
@@ -69,10 +70,13 @@ def add_padding_to_length(length_str, total_length=50):
     return length_str
 
 def send_filename_filesize(filename):
-    mess = add_padding_to_length(filename)
+    mess = add_padding_to_length(filename + ',')
     client_socket.sendto(mess.encode(), server_address)  
 
 def get_filename_filesize(file):
+    filename, filesize = file.split(" - ")
+    filesize, bytes = filesize.split(' ')
+    return filename, int(filesize)
     filename = ""
     i = 0
     while file[i] != ' ':
