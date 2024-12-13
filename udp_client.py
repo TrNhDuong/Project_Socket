@@ -1,6 +1,6 @@
 import socket
 import time
-import json
+import tqdm
 import sys
 import signal
 
@@ -19,7 +19,6 @@ def receive_file_list(client_socket):
     # Nhận thông báo về số lượng gói tin
     data, server = client_socket.recvfrom(1024)
     message = data.decode()
-    print(message)
     if message.startswith("PARTS:"):
         total_parts = int(message.split(":")[1])
         received_data = [""] * total_parts
@@ -77,19 +76,8 @@ def get_filename_filesize(file):
     filename, filesize = file.split(" - ")
     filesize, bytes = filesize.split(' ')
     return filename, int(filesize)
-    filename = ""
-    i = 0
-    while file[i] != ' ':
-        filename += file[i]
-        i += 1
-    i += 3
-    filesize = ""
-    while file[i] != ' ':
-        filesize += file[i]
-        i += 1
-    return filename, int(filesize)
 
-
+    
 def receive_file(filename, size):
     total_received = 0
     with open(filename, "wb") as file_obj:
@@ -100,17 +88,22 @@ def receive_file(filename, size):
             file_obj.seek(int(idx)*BUFFER_SIZE)
             file_obj.write(content)
             total_received += len(content)
-    print(f"Đã nhận được {total_received} Bytes so với {size} Bytes")
-
+    if total_received == size:
+        print(f"Đã nhận được đầy đủ {total_received} Bytes so với {size} Bytes")
+    else:
+        print(f"Nhận được {total_received} so với {size} Bytes")
 
 def handle():
     client_socket.sendto(b"0", server_address)
     file_list = receive_file_list(client_socket)
+    display = receive_file_list(client_socket)
     list_namefile = []
     list_sizefile = []
     print("Danh sách các file có thể download từ server:")
-    for file in file_list:
+    for file in display:
         print(file)
+        
+    for file in file_list:
         name, size = get_filename_filesize(file)
         list_namefile.append(name)
         list_sizefile.append(size)
@@ -139,7 +132,6 @@ def handle():
         print("Dang quet file input")
 
 def handle_exit(signal_received, frame):
-    """Hàm xử lý khi người dùng nhấn Ctrl + C."""
     print("\n[!] Ctrl + C được nhấn. Đang đóng kết nối...")
     if client_socket:
         try:

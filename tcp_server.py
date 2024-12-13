@@ -1,6 +1,5 @@
 import socket
 import os
-import json
 import threading
 
 # Server configuration
@@ -20,6 +19,16 @@ server_socket.bind((SERVER_HOST, SERVER_PORT))
 server_socket.listen(5)
 print(f"[*] Đang lắng nghe tại {SERVER_HOST}:{SERVER_PORT}")
 
+
+def read_contain_file():
+    with open("listfile.txt", "r") as file_obj:
+        lines = []
+        for line in file_obj.readlines():
+            if line.strip():
+                lines.append(line.strip())
+    
+    return lines
+
 # Hàm lấy danh sách các file có thể tải được
 def get_file_list():
     file_list = []
@@ -32,9 +41,8 @@ def get_file_list():
                 file_list.append(f"{filename} - {filesize} byte")
     return file_list
 
-def send_file_list(client_socket):
+def send_file_list(client_socket, file_list):
     # Lấy danh sách file
-    file_list = get_file_list()
     # Chuyển danh sách file thành chuỗi, các file cách nhau bằng dấu phẩy
     file_list_str = ','.join(file_list)
     # Gửi độ dài chuỗi trước
@@ -81,10 +89,12 @@ def handle_client(client_socket, address):
     print(f"Nhận được kết nối từ {address}")
     
     # Gửi danh sách file cho client
-    send_file_list(client_socket)
+    display = read_contain_file()
+    send_file_list(client_socket, file_list)
+    send_file_list(client_socket, display)
     message = receive_message(client_socket)
     if message == "close":
-        print("[+]Client address ", address ," closed")
+        print("[+] Client address ", address ," closed")
 
 
 # Hàm tách tên file, byte bắt đầu, byte kết thúc
@@ -120,10 +130,16 @@ def connect_from_client(client_socket, address):
 
 
 # Vòng lặp chính của server
-while True:
-    client_socket, address = server_socket.accept()
-    client = threading.Thread(target=connect_from_client, args=(client_socket, address))
-    client.start()
+if __name__ == "__main__":
+    file_list = get_file_list()
+    dis = read_contain_file()
+    print("Các file có thể download từ Server:")
+    for file in dis:
+        print(file)
+    while True:
+        client_socket, address = server_socket.accept()
+        client = threading.Thread(target=connect_from_client, args=(client_socket, address))
+        client.start()
 
 # Đóng server socket (khi thoát)
 server_socket.close()

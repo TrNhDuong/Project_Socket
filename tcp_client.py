@@ -1,10 +1,10 @@
 import socket
 import tqdm
-import json
 import time
 import threading
 import signal
 import sys
+
 
 # Client configuration
 SERVER_HOST = "127.0.0.1"
@@ -15,6 +15,7 @@ INPUT_FILE = "input.txt"  # File chứa danh sách các file cần tải
 DOWNLOADED_FILE = "downloaded_files.txt"
 
 client_socket = socket.socket()
+display_list = []
 
 def receive_file_list(client_socket):
     # Nhận độ dài danh sách file
@@ -59,7 +60,7 @@ def add_padding_to_length(length_str, total_length=100):
     return length_str
 
 
-def receive_chunk(client_socket, filename, start_end):
+def receive_chunk(client_socket, filename, start_end, i):
     start, end = start_end
     part_connect = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     part_connect.connect((SERVER_HOST, SERVER_PORT))
@@ -73,20 +74,18 @@ def receive_chunk(client_socket, filename, start_end):
     part_connect.sendall(f"{x}".encode())
 
     # Nhận data từ server và tải dữ liệu về
-    total_bytes = 0
-    if end - start > 0:
-        progress = tqdm.tqdm(range(end-start), f"Đang nhận 1 chunk {filename}", unit="B", unit_scale=True, unit_divisor=1024)
+    total_bytes = end - start
+    total_received = 0
+    if total_bytes > 0:
+        progress = tqdm.tqdm(range(total_bytes), f"Tiến trình download chunk {i} {filename}", unit="B", unit_scale=True, unit_divisor=1024)
         with open(filename, "r+b") as file_obj:
             file_obj.seek(start)
-            while total_bytes < (end - start):
-                bytes_read = part_connect.recv(min(BUFFER_SIZE, end - start - total_bytes))
+            while total_received < total_bytes:
+                bytes_read = part_connect.recv(min(BUFFER_SIZE, total_bytes - total_received))
                 if not bytes_read:
                     break
                 file_obj.write(bytes_read)
-                total_bytes += len(bytes_read)
-                if len(bytes_read) < BUFFER_SIZE:
-                    progress.update(end - start - progress.n)
-                    break
+                total_received += len(bytes_read)
                 progress.update(len(bytes_read))
                 time.sleep(0.05)
             progress.close()
@@ -111,7 +110,7 @@ def receive_file(client_socket, filename, filesize):
         file_obj. write(filename + "\n")
     
     for i in range(len(length_of_chunk)):
-        thread = threading.Thread(target=receive_chunk, args=(client_socket, filename, length_of_chunk[i]))
+        thread = threading.Thread(target=receive_chunk, args=(client_socket, filename, length_of_chunk[i], i))
         threads.append(thread)
     
     for thread in threads:
@@ -150,11 +149,14 @@ def connect_to_server():
     client_socket.send("0".encode())
     # Nhận danh sách các file có thể download
     file_list = receive_file_list(client_socket)
+    display_list = receive_file_list(client_socket)
     filename_list = []
     filesize_list = []
     print(f"Danh sách file có thể download từ Server: ")
-    for file in file_list:
+    for file in display_list:
         print(file)
+
+    for file in file_list:
         name, size = get_filename_filesize(file)
         filename_list.append(name)
         filesize_list.append(size)
@@ -202,6 +204,4 @@ signal.signal(signal.SIGINT, handle_exit)
 
 # Bắt đầu kết nối và tải file
 if __name__ == "__main__":
-    request = input("Bạn có muốn kết nối với Server không(Y/N): ")
-    if request == "Y":
-        connect_to_server()
+    connect_to_server()

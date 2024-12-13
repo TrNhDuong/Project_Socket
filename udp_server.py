@@ -9,6 +9,7 @@ BUFFER_SIZE = 1024  # 1KB
 SEPARATOR = "<SEPARATOR>"
 FILE_DIRECTORY = "fordown\\"  # Thư mục chứa các file
 
+display = []
 file_list = []
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_socket.bind((SERVER_HOST, SERVER_PORT))
@@ -24,6 +25,15 @@ def get_file_list():
                 file_list.append(f"{filename} - {filesize} Bytes")
     return file_list
 
+def read_contain_file():
+    with open("listfile.txt", "r") as file_obj:
+        lines = []
+        for line in file_obj.readlines():
+            if line.strip():
+                lines.append(line.strip())
+    
+    return lines
+
 def convert_to(file_list):
     mess = ""
     for file in file_list:
@@ -31,10 +41,9 @@ def convert_to(file_list):
         mess += ':'
     return mess
 
-def send_file_list(server_socket, address):
+def send_file_list(server_socket, address, file_list):
     # Lấy danh sách file
-    file_list = get_file_list()
-    # Chuyển mảng thành chuỗi JSON
+    # Chuyển mảng thành chuỗi, các file cách nhau bởi dấu ','
     file_list_data = ','.join(file_list)
     # Kiểm tra kích thước dữ liệu
     max_packet_size = 1024  # Giới hạn kích thước gói tin
@@ -71,7 +80,10 @@ def send_chunk_udp(address, parts, start, end):
         server_socket.sendto(header + parts[i], address)
         i += 1
 
-def send_file_udp(filename, address):  
+        
+
+
+def send_file_udp(filename, address): 
     try:
         with open(FILE_DIRECTORY + filename, "rb") as file:
             file_data = file.read()
@@ -98,10 +110,10 @@ def send_file_udp(filename, address):
     except FileNotFoundError:
         print(f"File not found: {filename}")
 
-file_list = get_file_list()
 
 def handle_client(addr):
-    send_file_list(server_socket, addr)
+    send_file_list(server_socket, addr, file_list)
+    send_file_list(server_socket, addr, display)
     while True:
         filename = receive_namefile_filesize()
         print(filename)
@@ -109,11 +121,17 @@ def handle_client(addr):
 
 
 if __name__ == "__main__":
+    display = read_contain_file()
+    file_list = get_file_list()
+    print("Các file có thể download trên Server: " )
+    for file in display:
+        print(file)
     data, addr = server_socket.recvfrom(1)
     if data.decode() == "0":
         print(f"[+] Message form {addr}")
         handle_client(addr)
 
+server_socket.close()
 
 
 
