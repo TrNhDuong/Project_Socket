@@ -3,31 +3,27 @@ import tqdm
 import time
 import threading
 import signal
-import json
 import sys
 import struct
 
-
 # Client configuration
-SERVER_HOST = "10.131.1.162"
+SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 5001
 BUFFER_SIZE = 1024
-SEPARATOR = "<SEPARATOR>"
 INPUT_FILE = "input.txt"  # File chứa danh sách các file cần tải
 DOWNLOADED_FILE = "downloaded_files.txt"
 
-client_socket = socket.socket()
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 display_list = []
 
 def receive_file_list(client_socket):
-    """Nhận danh sách file từ server."""
-    # Nhận độ dài chuỗi JSON
-    json_length = client_socket.recv(4)
-    json_length = struct.unpack('!I', json_length)[0]
-    # Nhận chuỗi JSON
-    json_data = client_socket.recv(json_length).decode()
-    # Chuyển chuỗi JSON thành danh sách
-    file_list = json.loads(json_data)
+    # Nhận độ dài chuỗi 
+    data_length = client_socket.recv(4)
+    data_length = struct.unpack('!I', data_length)[0]
+    # Nhận chuỗi 
+    data = client_socket.recv(data_length).decode()
+    # Chuyển chuỗi thành danh sách
+    file_list = data.split(',') if data else []
     return file_list
 
 def get_files_to_download():
@@ -54,16 +50,8 @@ def get_downloaded_file():
         print(f"[!] Khong tim file {DOWNLOADED_FILE}")
         return []
     
-def add_padding_to_length(length_str, total_length=100):
-    """Thêm padding vào chuỗi chiều dài cho đủ tổng chiều dài `total_length`."""
-    # Nếu chiều dài của chuỗi nhỏ hơn total_length, thêm padding
-    if len(length_str) < total_length:
-        padding_length = total_length - len(length_str)
-        length_str = length_str + '#' * padding_length  # Thêm byte padding
-    return length_str
 
-
-def receive_chunk(client_socket, filename, start_end, i):
+def receive_chunk(filename, start_end, i):
     start, end = start_end
     part_connect = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     part_connect.connect((SERVER_HOST, SERVER_PORT))
@@ -71,10 +59,10 @@ def receive_chunk(client_socket, filename, start_end, i):
     part_connect.send("1".encode('utf-8'))
 
     # Gửi tên file muốn download, vị trí bắt đầu tải và dừng
-    send_str = filename + "##" + f"{start}##{end}"
-    # print(send_str)
-    x = add_padding_to_length(send_str)
-    part_connect.sendall(f"{x}".encode())
+    send_str = filename + ',' + f"{start},{end}"
+    packet = struct.pack('!I', len(send_str))
+    part_connect.send(packet)
+    part_connect.sendall(send_str.encode())
 
     # Nhận data từ server và tải dữ liệu về
     total_bytes = end - start
@@ -113,7 +101,7 @@ def receive_file(client_socket, filename, filesize):
         file_obj. write(filename + "\n")
     
     for i in range(len(length_of_chunk)):
-        thread = threading.Thread(target=receive_chunk, args=(client_socket, filename, length_of_chunk[i], i))
+        thread = threading.Thread(target=receive_chunk, args=(filename, length_of_chunk[i], i))
         threads.append(thread)
     
     for thread in threads:
@@ -121,28 +109,10 @@ def receive_file(client_socket, filename, filesize):
     
     for thread in threads:
         thread.join()
-    
-# Hàm gửi danh sách file muốn download tới Server
-def send_download_file_list(client_socket, wanted_files):
-    # Gửi độ dài của danh sách file
-    client_socket.send(f"{len(wanted_files)}".encode())
-    # Gửi danh sách file
-    client_socket.sendall(wanted_files.encode())
-
 
 def get_filename_filesize(file):
-    filename = ""
-    i = 0
-    while file[i] != ' ':
-        filename += file[i]
-        i += 1
-    
-    i += 3
-    filesize = ""
-    while file[i] != ' ':
-        filesize += file[i]
-        i += 1
-    
+    filename, filesize = file.split(" - ")
+    filesize, bytes = filesize.split(' ')
     return filename, int(filesize)
 
 # Hàm kết nối tới Server
@@ -152,11 +122,11 @@ def connect_to_server():
     client_socket.send("0".encode())
     # Nhận danh sách các file có thể download
     file_list = receive_file_list(client_socket)
-    print(file_list)
+    # Nhận danh sách hiển thịthị
     display_list = receive_file_list(client_socket)
-    print(display_list)
     filename_list = []
     filesize_list = []
+    # Hiển thị danh sáchsách
     print(f"Danh sách file có thể download từ Server: ")
     for file in display_list:
         print(file)
@@ -190,10 +160,9 @@ def connect_to_server():
                 checked_file.append(file)
         time.sleep(5)
 
+# Hàm xử lí Ctrl + C
 def handle_exit(signal_received, frame):
-    """Hàm xử lý khi người dùng nhấn Ctrl + C."""
     print("\n[!] Ctrl + C được nhấn. Đang đóng kết nối...")
-    client_socket.send(f"{len("close")}".encode())
     client_socket.send("close".encode())
     if client_socket:
         try:
@@ -202,7 +171,6 @@ def handle_exit(signal_received, frame):
         except Exception as e:
             print(f"[!] Lỗi khi đóng socket: {e}")
     sys.exit(0)  # Thoát chương trình
-
 
 # Gắn xử lý tín hiệu Ctrl + C
 signal.signal(signal.SIGINT, handle_exit)               

@@ -1,6 +1,5 @@
 import socket
 import os
-import json
 import threading
 import struct
 
@@ -8,7 +7,6 @@ import struct
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 5001
 BUFFER_SIZE = 1024  # 1KB
-SEPARATOR = "<SEPARATOR>"
 FILE_DIRECTORY = "fordown"  # Thư mục chứa các file
 
 # Mảng chứa các địa chỉ đã kết nối
@@ -21,14 +19,13 @@ server_socket.bind((SERVER_HOST, SERVER_PORT))
 server_socket.listen(5)
 print(f"[*] Đang lắng nghe tại {SERVER_HOST}:{SERVER_PORT}")
 
-
+# Hàm đọc file chứa tên và dung lượnglượng
 def read_contain_file():
     with open("listfile.txt", "r") as file_obj:
         lines = []
         for line in file_obj.readlines():
             if line.strip():
                 lines.append(line.strip())
-    
     return lines
 
 # Hàm lấy danh sách các file có thể tải được
@@ -39,31 +36,19 @@ def get_file_list():
             file_path = os.path.join(FILE_DIRECTORY, filename)
             if os.path.isfile(file_path):
                 filesize = os.path.getsize(file_path)
-                # filesize_kb = filesize / 1024  # Chuyển byte thành KB
                 file_list.append(f"{filename} - {filesize} byte")
     return file_list
 
+# Hàm gửi danh sách file
 def send_file_list(client_socket, file_list):
-    """Gửi danh sách file dưới dạng JSON cho client."""
-    # Lấy danh sách file
-    # Chuyển mảng thành chuỗi JSON
-    json_data = json.dumps(file_list)
-    data_length = len(json_data)
+    # Chuyển mảng thành chuỗi ngăn cách bởi dấu ',' giữa các filefile
+    data = ','.join(file_list)
+    data_length = len(data)
     packed_length = struct.pack('!I', data_length)  # '!I': big-endian, unsigned int (4 byte)
     # Gửi độ dài trước
     client_socket.send(packed_length)
-    # Gửi độ dài của chuỗi JSON trước
-    # client_socket.send(f"{len(json_data)}".encode())
-    # Gửi toàn bộ chuỗi JSON
-    client_socket.sendall(json_data.encode())
-
-# Hàm nhận tin nhắn từ Server
-def receive_message(client_socket):
-    # Nhận độ dài xâu trước
-    message_length = int(client_socket.recv(1024).decode())
-    # Nhận xâu có độ dài đã biết
-    message = client_socket.recv(message_length).decode()
-    return message
+    # Gửi toàn bộ chuỗi
+    client_socket.sendall(data.encode())
 
 # Hàm gửi chunk tới Client
 def send_chunk(client_socket, filename, start, end):
@@ -78,17 +63,6 @@ def send_chunk(client_socket, filename, start, end):
             total_sent += len(bytes_to_send)
     file_obj.close()
 
-# Hàm kiểm tra file tồn tại, đã tải hay không tồn tại
-def send_file(client_socket, requested_file):
-    file_path = os.path.join(FILE_DIRECTORY, requested_file)
-    if os.path.exists(file_path) and os.path.isfile(file_path):
-        filesize = os.path.getsize(file_path)
-        client_socket.send(f"{requested_file}{SEPARATOR}{filesize}".encode())
-        # print(f"[+] Đã gửi xong file: {requested_file}")
-    else:
-        client_socket.send("File not found".encode())
-        print(f"[!] File {requested_file} không tồn tại trên server.")
-
 
 def handle_client(client_socket, address):
     if address not in connected_addr:
@@ -99,39 +73,23 @@ def handle_client(client_socket, address):
     display = read_contain_file()
     send_file_list(client_socket, file_list)
     send_file_list(client_socket, display)
-    message = receive_message(client_socket)
+    message = client_socket.recv(5).decode()
     if message == "close":
         print("[+] Client address ", address ," closed")
 
 
-# Hàm tách tên file, byte bắt đầu, byte kết thúc
-def split_name_start_end(message):
-    name = ""
-    i = 0
-    while message[i] != '#':
-        name += message[i]
-        i += 1
-    start = ""
-    i += 2
-    while message[i] != '#':
-        start += message[i]
-        i += 1
-    end = ""
-    i += 2
-    while message[i] != '#':
-        end += message[i]
-        i += 1
-    return name, int(start), int(end)
-
 def connect_from_client(client_socket, address):
     signal = client_socket.recv(1).decode('utf-8')  # Chỉ nhận 1 byte
-
+    # Xử lí kết nối
     if signal == "0":
         handle_client(client_socket, address)
     else:
         # Nhận xâu chứa tên file muốn tải, byte bắt đầu và kết thúc từ client
-        mess = client_socket.recv(100).decode()
-        filename, start, end = split_name_start_end(mess)
+        lenStr = client_socket.recv(4)
+        lenStr = struct.unpack('!I', lenStr)[0]
+        mess = client_socket.recv(lenStr).decode()
+        filename, start, end = mess.split(',')
+        start, end = int(start), int(end)
         send_chunk(client_socket, filename, start, end)
     client_socket.close()
 

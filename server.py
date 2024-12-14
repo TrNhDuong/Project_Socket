@@ -1,19 +1,21 @@
 import socket
 import os
 import threading
+import struct
 
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 5001
-PORT = [5002, 5003, 5004, 5005]
 BUFFER_SIZE = 1024  # 1KB
-SEPARATOR = "<SEPARATOR>"
 FILE_DIRECTORY = "fordown\\"  # Thư mục chứa các file
 
 display = []
 file_list = []
-received_part = []
+
+
+# Tạo socket Server
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_socket.bind((SERVER_HOST, SERVER_PORT))
+
 
 def get_file_list():
     file_list = []
@@ -22,7 +24,6 @@ def get_file_list():
             file_path = os.path.join(FILE_DIRECTORY, filename)
             if os.path.isfile(file_path):
                 filesize = os.path.getsize(file_path)
-                # filesize_kb = filesize / 1024  # Chuyển byte thành KB
                 file_list.append(f"{filename} - {filesize} Bytes")
     return file_list
 
@@ -32,18 +33,9 @@ def read_contain_file():
         for line in file_obj.readlines():
             if line.strip():
                 lines.append(line.strip())
-    
     return lines
 
-def convert_to(file_list):
-    mess = ""
-    for file in file_list:
-        mess += file
-        mess += ':'
-    return mess
-
 def send_file_list(server_socket, address, file_list):
-    # Lấy danh sách file
     # Chuyển mảng thành chuỗi, các file cách nhau bởi dấu ','
     file_list_data = ','.join(file_list)
     # Kiểm tra kích thước dữ liệu
@@ -67,28 +59,26 @@ def send_file_list(server_socket, address, file_list):
             server_socket.sendto(packet, address)
 
 
-def receive_namefile_filesize():
-    data, addr = server_socket.recvfrom(100)
-    data = data.decode()
-    filename, support = data.split(',')
+def receive_namefile():
+    lenName, addr = server_socket.recvfrom(4)
+    lenName = struct.unpack('!I', lenName)[0]
+    filename, saddr = server_socket.recvfrom(lenName)
+    filename = filename.decode()
     return filename
 
 
 def send_chunk_udp(add, parts, start, end):
-    print(add, start, end)
     i = start
     while i < end:
-        print(i)
-        header = f"{i}:".encode()
+        header = struct.pack('!I', i)
         server_socket.sendto(header + parts[i], add)
-        i += 1
-        # server_socket.settimeout(0.05)
-        # try:
-        #     ACK, addr = server_socket.recvfrom(1)
-        #     if ACK.decode() == "1":
-        #         i += 1
-        # except (server_socket.timeout, TimeoutError):
-        #     continue
+        server_socket.settimeout(5)
+        try:
+            ACK, client = server_socket.recvfrom(1)
+            if ACK.decode() == "1":
+                i += 1
+        except (server_socket.timeout, TimeoutError):
+            continue
 
 
 def send_file_udp(filename, address): 
@@ -101,9 +91,7 @@ def send_file_udp(filename, address):
         parts = []
         for i in range(0, total_size, BUFFER_SIZE):
             parts.append(file_data[i:i+BUFFER_SIZE])
-        # parts = [file_data[i:i + BUFFER_SIZE] for i in range(0, total_size, BUFFER_SIZE)]
         total_parts = len(parts)
-        print(total_parts)
         
         unit = int(total_parts/4)
         length_of_chunk = [(0,unit), (unit, 2*unit), (2*unit, 3*unit), (3*unit, total_parts)]
@@ -111,8 +99,6 @@ def send_file_udp(filename, address):
         threads = []
         for i in range(4):
             idx, add = server_socket.recvfrom(1)
-            print(idx)
-            print(add)
             idx = int(idx)
             start, end = length_of_chunk[idx]
             thread = threading.Thread(target=send_chunk_udp, args=(add, parts, start, end))
@@ -123,6 +109,7 @@ def send_file_udp(filename, address):
 
         for thread in threads:
             thread.join()
+        print(f"Đã gửi file {filename}")
     except FileNotFoundError:
         print(f"File not found: {filename}")
 
@@ -131,9 +118,12 @@ def handle_client(addr):
     send_file_list(server_socket, addr, file_list)
     send_file_list(server_socket, addr, display)
     while True:
-        filename = receive_namefile_filesize()
-        print(filename)
-        send_file_udp(filename, addr)
+        server_socket.settimeout(5)
+        try:
+            filename = receive_namefile()
+            send_file_udp(filename, addr)
+        except TimeoutError:
+            continue
 
 
 if __name__ == "__main__":

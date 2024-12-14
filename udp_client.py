@@ -3,11 +3,11 @@ import time
 import tqdm
 import sys
 import signal
+import struct
 
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 5001
 BUFFER_SIZE = 1024  # 1KB
-SEPARATOR = "<SEPARATOR>"
 INPUT_FILE = "input.txt"
 DOWNLOADED_FILE = "downloaded_files.txt"
 
@@ -60,36 +60,37 @@ def get_downloaded_file():
     except FileNotFoundError:
         print(f"[!] Khong tim file {DOWNLOADED_FILE}")
         return []
-
-def add_padding_to_length(length_str, total_length=50):
-    # Nếu chiều dài của chuỗi nhỏ hơn total_length, thêm padding
-    if len(length_str) < total_length:
-        padding_length = total_length - len(length_str)
-        length_str = length_str + '#' * padding_length  # Thêm byte padding
-    return length_str
-
-def send_filename_filesize(filename):
-    mess = add_padding_to_length(filename + ',')
-    client_socket.sendto(mess.encode(), server_address)  
+    
+def send_filename(filename):
+    sizeName = struct.pack('!I', len(filename))
+    client_socket.sendto(sizeName, server_address)
+    client_socket.sendto(filename.encode(), server_address)    
 
 def get_filename_filesize(file):
     filename, filesize = file.split(" - ")
     filesize, bytes = filesize.split(' ')
     return filename, int(filesize)
-
     
 def receive_file(filename, size):
     total_received = 0
     with open(filename, "wb") as file_obj:
         file_obj.write(b'\x00' * size)
+        progress = tqdm.tqdm(range(size), f"Tiến trình download file {filename}", unit="B", unit_scale=True, unit_divisor=1024)
         while total_received < size:
-            part, server = client_socket.recvfrom(1024 + 10)
-            idx, content = part.split(b":", 1)
-            file_obj.seek(int(idx)*BUFFER_SIZE)
+            part, server = client_socket.recvfrom(BUFFER_SIZE + 4)
+            offset = part[0:4]
+            offset = struct.unpack('!I', offset)[0]
+            content = part[4:BUFFER_SIZE + 4]
+            file_obj.seek(offset*BUFFER_SIZE)
             file_obj.write(content)
             total_received += len(content)
+            progress.update(len(content))
+            client_socket.sendto("1".encode(), server_address)
+        progress.close()
     if total_received == size:
-        print(f"Đã nhận được đầy đủ {total_received} Bytes so với {size} Bytes")
+        print(f"Đã tải thành công file {filename}")
+        with open(DOWNLOADED_FILE, "a") as file_obj:
+            file_obj.write(filename + '\n')
     else:
         print(f"Nhận được {total_received} so với {size} Bytes")
 
@@ -118,9 +119,8 @@ def handle():
             for file in input_file:
                 if file not in checked_file:
                     if file in list_namefile and file not in downloaded_file:
-                        print(file)
                         i = list_namefile.index(file)
-                        send_filename_filesize(file)
+                        send_filename(file)
                         size = list_sizefile[i]
                         receive_file(file, size)
                     elif file not in list_namefile:
