@@ -1,6 +1,8 @@
 import socket
 import os
+import json
 import threading
+import struct
 
 # Server configuration
 SERVER_HOST = "0.0.0.0"
@@ -42,13 +44,18 @@ def get_file_list():
     return file_list
 
 def send_file_list(client_socket, file_list):
+    """Gửi danh sách file dưới dạng JSON cho client."""
     # Lấy danh sách file
-    # Chuyển danh sách file thành chuỗi, các file cách nhau bằng dấu phẩy
-    file_list_str = ','.join(file_list)
-    # Gửi độ dài chuỗi trước
-    client_socket.send(f"{len(file_list_str)}".encode())
-    # Gửi danh sách file
-    client_socket.sendall(file_list_str.encode())
+    # Chuyển mảng thành chuỗi JSON
+    json_data = json.dumps(file_list)
+    data_length = len(json_data)
+    packed_length = struct.pack('!I', data_length)  # '!I': big-endian, unsigned int (4 byte)
+    # Gửi độ dài trước
+    client_socket.send(packed_length)
+    # Gửi độ dài của chuỗi JSON trước
+    # client_socket.send(f"{len(json_data)}".encode())
+    # Gửi toàn bộ chuỗi JSON
+    client_socket.sendall(json_data.encode())
 
 # Hàm nhận tin nhắn từ Server
 def receive_message(client_socket):

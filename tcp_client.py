@@ -3,11 +3,13 @@ import tqdm
 import time
 import threading
 import signal
+import json
 import sys
+import struct
 
 
 # Client configuration
-SERVER_HOST = "127.0.0.1"
+SERVER_HOST = "10.131.1.162"
 SERVER_PORT = 5001
 BUFFER_SIZE = 1024
 SEPARATOR = "<SEPARATOR>"
@@ -18,13 +20,14 @@ client_socket = socket.socket()
 display_list = []
 
 def receive_file_list(client_socket):
-    # Nhận độ dài danh sách file
-    length_data = client_socket.recv(1024).decode()
-    file_list_length = int(length_data)
-    # Nhận danh sách file dạng chuỗi
-    received_data = client_socket.recv(file_list_length).decode()
-    # Phân tách chuỗi thành danh sách file (giả định phân tách bằng dấu phẩy)
-    file_list = received_data.split(',') if received_data else []
+    """Nhận danh sách file từ server."""
+    # Nhận độ dài chuỗi JSON
+    json_length = client_socket.recv(4)
+    json_length = struct.unpack('!I', json_length)[0]
+    # Nhận chuỗi JSON
+    json_data = client_socket.recv(json_length).decode()
+    # Chuyển chuỗi JSON thành danh sách
+    file_list = json.loads(json_data)
     return file_list
 
 def get_files_to_download():
@@ -149,7 +152,9 @@ def connect_to_server():
     client_socket.send("0".encode())
     # Nhận danh sách các file có thể download
     file_list = receive_file_list(client_socket)
+    print(file_list)
     display_list = receive_file_list(client_socket)
+    print(display_list)
     filename_list = []
     filesize_list = []
     print(f"Danh sách file có thể download từ Server: ")
