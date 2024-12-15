@@ -78,7 +78,7 @@ def receive_chunk(filename, start_end, i):
                 file_obj.write(bytes_read)
                 total_received += len(bytes_read)
                 progress.update(len(bytes_read))
-                time.sleep(0.05)
+                # time.sleep(0.05)
             progress.close()
     part_connect.close()
 

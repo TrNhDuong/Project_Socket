@@ -21,13 +21,11 @@ def receive_file_list(client_socket):
     if message.startswith("PARTS:"):
         total_parts = int(message.split(":")[1])
         received_data = [""] * total_parts
-
         for _ in range(total_parts):
             part, server = client_socket.recvfrom(1024)
             idx, content = part.decode().split(":", 1)
             received_data[int(idx)] = content
             client_socket.sento("1".decode(), server)
-
         # Ghép dữ liệu
         full_data = "".join(received_data)
         print(full_data)
@@ -72,7 +70,6 @@ def get_filename_filesize(file):
     filesize, bytes = filesize.split(' ')
     return filename, int(filesize)
 
-
 # Hàm download 1 phần của file
 def download_part(filename, length_of_chunk, i):
     child_client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -90,8 +87,7 @@ def download_part(filename, length_of_chunk, i):
             child_client.sendto("1".encode(), server_address)
             total_received += 1
     child_client.close()
-
-    
+ 
 def receive_file(filename, size):
     with open(filename, "wb") as file_obj:
         file_obj.write(b'\x00'*size)
@@ -101,17 +97,16 @@ def receive_file(filename, size):
 
     unit = int(total_parts/4)
     length_of_chunk = [(0,unit), (unit, 2*unit), (2*unit, 3*unit), (3*unit, total_parts)]
-    
     threads = []
     for i in range(4):
         start, end = length_of_chunk[i]
         thread = threading.Thread(target=download_part, args=(filename, length_of_chunk, i))
         threads.append(thread)
-    
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
+
     print(f"Đã tải xong file {filename}")
     with open(DOWNLOADED_FILE, "a") as file_obj:
         file_obj.write(filename + '\n')
@@ -151,7 +146,7 @@ def handle():
                         print(f"[!] File {file} đã tải xuống")
                     checked_file.append(file)
         time.sleep(5)
-        print("Đang quét file inputt")
+        print("Đang quét file input")
 
 # Hàm xử lí Ctrl + C
 def handle_exit(signal_received, frame):

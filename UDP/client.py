@@ -1,9 +1,9 @@
 import socket
 import time
-import threading
+import tqdm
 import sys
-import struct
 import signal
+import struct
 
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 5001
@@ -12,6 +12,7 @@ INPUT_FILE = "input.txt"
 DOWNLOADED_FILE = "downloaded_files.txt"
 
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
 server_address = (SERVER_HOST, SERVER_PORT)
 
 def receive_file_list(client_socket):
@@ -26,7 +27,6 @@ def receive_file_list(client_socket):
             part, server = client_socket.recvfrom(1024)
             idx, content = part.decode().split(":", 1)
             received_data[int(idx)] = content
-            client_socket.sento("1".decode(), server)
 
         # Ghép dữ liệu
         full_data = "".join(received_data)
@@ -49,7 +49,6 @@ def get_files_to_download():
         print(f"[!] Không tìm thấy file {INPUT_FILE}. Đảm bảo file tồn tại.")
         return []
 
-# Hàm lấy tên các gói tin đã download
 def get_downloaded_file():
     try:
         with open(DOWNLOADED_FILE, "r") as file:
@@ -61,60 +60,39 @@ def get_downloaded_file():
     except FileNotFoundError:
         print(f"[!] Khong tim file {DOWNLOADED_FILE}")
         return []
-
+    
 def send_filename(filename):
     sizeName = struct.pack('!I', len(filename))
     client_socket.sendto(sizeName, server_address)
-    client_socket.sendto(filename.encode(), server_address)  
+    client_socket.sendto(filename.encode(), server_address)    
 
 def get_filename_filesize(file):
     filename, filesize = file.split(" - ")
     filesize, bytes = filesize.split(' ')
     return filename, int(filesize)
-
-
-# Hàm download 1 phần của file
-def download_part(filename, length_of_chunk, i):
-    child_client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    start, end = length_of_chunk[i]
-    child_client.sendto(f"{i}".encode(), server_address)
-    total_received = 0
-    with open(filename, "wb") as file_obj:
-        while total_received < end - start:
-            data, server = child_client.recvfrom(BUFFER_SIZE + 4)
-            offset = data[0:4]
-            offset = struct.unpack('!I', offset)[0]
-            content = data[4:len(data)]
-            file_obj.seek(offset*BUFFER_SIZE)
-            file_obj.write(content)
-            child_client.sendto("1".encode(), server_address)
-            total_received += 1
-    child_client.close()
-
     
 def receive_file(filename, size):
+    total_received = 0
     with open(filename, "wb") as file_obj:
-        file_obj.write(b'\x00'*size)
-    total_parts = 0
-    for i in range(0, size, BUFFER_SIZE):
-        total_parts = total_parts + 1
-
-    unit = int(total_parts/4)
-    length_of_chunk = [(0,unit), (unit, 2*unit), (2*unit, 3*unit), (3*unit, total_parts)]
-    
-    threads = []
-    for i in range(4):
-        start, end = length_of_chunk[i]
-        thread = threading.Thread(target=download_part, args=(filename, length_of_chunk, i))
-        threads.append(thread)
-    
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-    print(f"Đã tải xong file {filename}")
-    with open(DOWNLOADED_FILE, "a") as file_obj:
-        file_obj.write(filename + '\n')
+        file_obj.write(b'\x00' * size)
+        progress = tqdm.tqdm(range(size), f"Tiến trình download file {filename}", unit="B", unit_scale=True, unit_divisor=1024)
+        while total_received < size:
+            part, server = client_socket.recvfrom(BUFFER_SIZE + 4)
+            offset = part[0:4]
+            offset = struct.unpack('!I', offset)[0]
+            content = part[4:BUFFER_SIZE + 4]
+            file_obj.seek(offset*BUFFER_SIZE)
+            file_obj.write(content)
+            total_received += len(content)
+            progress.update(len(content))
+            client_socket.sendto("1".encode(), server_address)
+        progress.close()
+    if total_received == size:
+        print(f"Đã tải thành công file {filename}")
+        with open(DOWNLOADED_FILE, "a") as file_obj:
+            file_obj.write(filename + '\n')
+    else:
+        print(f"Nhận được {total_received} so với {size} Bytes")
 
 def handle():
     client_socket.sendto(b"0", server_address)
@@ -151,9 +129,8 @@ def handle():
                         print(f"[!] File {file} đã tải xuống")
                     checked_file.append(file)
         time.sleep(5)
-        print("Đang quét file inputt")
+        print("Dang quet file input")
 
-# Hàm xử lí Ctrl + C
 def handle_exit(signal_received, frame):
     print("\n[!] Ctrl + C được nhấn. Đang đóng kết nối...")
     if client_socket:
