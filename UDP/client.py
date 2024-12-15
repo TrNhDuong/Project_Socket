@@ -16,26 +16,21 @@ client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 server_address = (SERVER_HOST, SERVER_PORT)
 
 def receive_file_list(client_socket):
-    # Nhận thông báo về số lượng gói tin
-    data, server = client_socket.recvfrom(1024)
-    message = data.decode()
-    if message.startswith("PARTS:"):
-        total_parts = int(message.split(":")[1])
-        received_data = [""] * total_parts
-
-        for _ in range(total_parts):
-            part, server = client_socket.recvfrom(1024)
-            idx, content = part.decode().split(":", 1)
-            received_data[int(idx)] = content
-
-        # Ghép dữ liệu
-        full_data = "".join(received_data)
-        print(full_data)
-        file_list = full_data.split(',')
-        return file_list
-    else:
-        # Nhận một gói tin đơn giản
-        return message.split(',')
+    file_list = []
+    number_packet, server = client_socket.recvfrom(4)
+    number_packet = struct.unpack('!I', number_packet)[0]
+    received_data = [""]*number_packet
+    for i in range(number_packet):
+        data, server = client_socket.recvfrom(BUFFER_SIZE + 4)
+        idx = data[0:4]
+        idx = struct.unpack('!I', idx)[0]
+        content = data[4:BUFFER_SIZE + 4]
+        content = content.decode()
+        received_data[idx] = content
+        
+    full_data = "".join(received_data)
+    file_list = full_data.split(',')
+    return file_list
 
 def get_files_to_download():
     try:
@@ -71,21 +66,34 @@ def get_filename_filesize(file):
     filesize, bytes = filesize.split(' ')
     return filename, int(filesize)
     
+def count_sum(data):
+    sum = 2**8 - 11
+    for i in range(len(data)):
+        sum &= data[i]
+    return sum
+
 def receive_file(filename, size):
     total_received = 0
+    print(f"Download file {filename}")
     with open(filename, "wb") as file_obj:
         file_obj.write(b'\x00' * size)
-        progress = tqdm.tqdm(range(size), f"Tiến trình download file {filename}", unit="B", unit_scale=True, unit_divisor=1024)
+        progress = tqdm.tqdm(range(size), f"Tiến trình download: ", unit="B", unit_scale=True, unit_divisor=1024)
         while total_received < size:
-            part, server = client_socket.recvfrom(BUFFER_SIZE + 4)
-            offset = part[0:4]
-            offset = struct.unpack('!I', offset)[0]
-            content = part[4:BUFFER_SIZE + 4]
-            file_obj.seek(offset*BUFFER_SIZE)
-            file_obj.write(content)
-            total_received += len(content)
-            progress.update(len(content))
-            client_socket.sendto("1".encode(), server_address)
+            part, server = client_socket.recvfrom(BUFFER_SIZE + 8)
+            seq_num = part[0:4]
+            sum = part[4:8]
+            seq_num = struct.unpack('!I', seq_num)[0]
+            sum = struct.unpack('!I', sum)[0]
+            content = part[8:BUFFER_SIZE + 8]
+            cnt_sum = count_sum(content)
+            if sum == cnt_sum:
+                file_obj.seek(seq_num*BUFFER_SIZE)
+                file_obj.write(content)
+                total_received += len(content)
+                progress.update(len(content))
+                client_socket.sendto("1".encode(), server_address)
+            else:
+                client_socket.sendto("0".encode(), server_address)
         progress.close()
     if total_received == size:
         print(f"Đã tải thành công file {filename}")

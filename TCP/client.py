@@ -68,7 +68,7 @@ def receive_chunk(filename, start_end, i):
     total_bytes = end - start
     total_received = 0
     if total_bytes > 0:
-        progress = tqdm.tqdm(range(total_bytes), f"Tiến trình download chunk {i} {filename}", unit="B", unit_scale=True, unit_divisor=1024)
+        progress = tqdm.tqdm(range(total_bytes), f"Tiến trình download part {i} {filename}", unit="B", unit_scale=True, unit_divisor=1024)
         with open(filename, "r+b") as file_obj:
             file_obj.seek(start)
             while total_received < total_bytes:

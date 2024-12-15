@@ -29,32 +29,19 @@ def read_contain_file():
         for line in file_obj.readlines():
             if line.strip():
                 lines.append(line.strip())
-    
     return lines
-
 
 def send_file_list(server_socket, address, file_list):
     # Chuyển mảng thành chuỗi, các file cách nhau bởi dấu ','
     file_list_data = ','.join(file_list)
-    # Kiểm tra kích thước dữ liệu
-    max_packet_size = 1024  # Giới hạn kích thước gói tin
     data_length = len(file_list_data)
-    
-    if data_length <= max_packet_size:
-        # Gửi một gói tin nếu dữ liệu nhỏ
-        server_socket.sendto(file_list_data.encode(), address)
-    else:
-        # Chia dữ liệu thành nhiều phần
-        parts = [file_list_data[i:i+max_packet_size] for i in range(0, data_length, max_packet_size)]
-        total_parts = len(parts)
-
-        # Gửi số lượng gói tin trước
-        server_socket.sendto(f"PARTS:{total_parts}".encode(), address)
-
-        # Gửi từng phần với số thứ tự
-        for idx, part in enumerate(parts):
-            packet = f"{idx}:{part}".encode()  # Thêm chỉ số gói tin
-            server_socket.sendto(packet, address)
+    parts = [file_list_data[i:i+BUFFER_SIZE] for i in range(0, data_length, BUFFER_SIZE)]
+    total_parts = len(parts)
+    numPacket = struct.pack('!I', total_parts)
+    server_socket.sendto(numPacket, address)
+    for i, part in enumerate(parts):
+        seq_num = struct.pack('!I', i)
+        server_socket.sendto(seq_num + part.encode(), address)
 
 def receive_namefile():
     lenName, addr = server_socket.recvfrom(4)
@@ -62,6 +49,12 @@ def receive_namefile():
     filename, saddr = server_socket.recvfrom(lenName)
     filename = filename.decode()
     return filename
+
+def count_sum(data):
+    sum = 2**8 - 11
+    for i in range(len(data)):
+        sum &= data[i]
+    return sum
 
 def send_file_udp(filename, address): 
     try:
@@ -72,7 +65,9 @@ def send_file_udp(filename, address):
             i = 0
             while total_sent < total:
                 bytes_sent = data[total_sent:total_sent + BUFFER_SIZE]
-                header = struct.pack('!I', i)
+                seq_num = struct.pack('!I', i)
+                sum = struct.pack('!I', count_sum(bytes_sent))
+                header = seq_num + sum
                 server_socket.sendto(header + bytes_sent, address)
                 server_socket.settimeout(5)
                 try:
@@ -80,6 +75,8 @@ def send_file_udp(filename, address):
                     if ACK.decode() == "1":
                         total_sent += len(bytes_sent)
                         i += 1
+                    elif ACK.decode() == "0":
+                        continue
                 except (server_socket.timeout, TimeoutError):
                     continue
     except FileNotFoundError:
